@@ -8,8 +8,12 @@ classdef KeysightE36311A < Device
         RsrcName = 'USB0::0x2A8D::0x1002::MY58290609::0::INSTR'; 
     end
     methods
-        function obj = KeysightE36311A()
-            
+        function obj = KeysightE36311A(RsrcName)
+            if nargin < 1
+                obj.RsrcName = 'USB0::0x2A8D::0x1002::MY58290609::0::INSTR'; 
+            else
+                obj.RsrcName = RsrcName;
+            end
         end
         function DevObj = Init(obj)
             if ~isunix
