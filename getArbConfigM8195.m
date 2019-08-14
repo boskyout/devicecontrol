@@ -19,7 +19,7 @@ arbConfig.skew = chConfig.skew;
 
 % for segment 8195_2ch
 arbConfig.fixedSampleRate = 0;
-arbConfig.defaultSampleRate = 32e9;
+arbConfig.defaultSampleRate = 32e9;s
 arbConfig.maximumSampleRate = 32.5e9;
 arbConfig.minimumSampleRate = 27e9;
 arbConfig.minimumSegmentSize = 5*128;

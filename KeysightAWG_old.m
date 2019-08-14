@@ -21,20 +21,19 @@ classdef KeysightAWG < Device
             DevObj = instrfind('Type', 'visa-generic', 'RsrcName', RsrcName, 'Tag', '');
             if isempty(DevObj)
                 DevObj = visa(obj.VISA_Vendor, RsrcName);
+                % set the buffer size
+                DevObj.InputBufferSize = 1e6;
+                DevObj.OutputBufferSize = 1e6;
+                flushoutput(DevObj);
+                flushinput(DevObj);
             else
                 fclose(DevObj);
                 DevObj = DevObj(1);
             end
-            % set the buffer size
-            DevObj.InputBufferSize = 1e6;
-            DevObj.OutputBufferSize = 1e6;
-            flushoutput(DevObj);
-            flushinput(DevObj);
         end
         
         function [response] = Query_Calibration(obj,channel,amp)
             obj.DevObj = obj.Init();
-            % read the waveform
             % open the connection
             fopen(obj.DevObj);
             % set the data source to Channel
