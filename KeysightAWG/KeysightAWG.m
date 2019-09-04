@@ -3,19 +3,20 @@ classdef KeysightAWG < Device
     % Created by Tianwai@PSRL,KAIST
     % Package to control Keysight AWG
     properties
-       channelMapping;
-       arbConfig;
-       AWGSamplingRate = 64e9;
-       channelConfig;
-       AWGmodel = 'M8195A_2ch_256k';
-       
-       ipaddr = '192.168.0.168';
-       port = 5025;
-       
-       flagNotification = true;
-       flagRunAfterLoad = true;
+        channelMapping;
+        arbConfig;
+        AWGSamplingRate = 64e9;
+        channelConfig;
+        AWGmodel = 'M8195A_2ch_256k';
+        UseMemory = 'Internal';
+        
+        ipaddr = '192.168.0.168';
+        port = 5025;
+        
+        flagNotification = true;
+        flagRunAfterLoad = true;
     end
-
+    
     methods
         function obj = KeysightAWG(ipaddr,port,modMethod,model)
             if nargin <1
@@ -32,7 +33,8 @@ classdef KeysightAWG < Device
             obj.AWGmodel = 'M8195A_2ch_256k';
             obj.arbConfig = getArbConfig(ipaddr,port,model);
             % configure the channel mapping
-            obj.SetChannelMapping(modMethod); % 'IQ'|'CH1'|'CH4';
+%             obj.SetChannelMapping(modMethod); % 'IQ'|'CH1'|'CH4';
+            obj.channelMapping = [1 0;0 0;0 0;0 1]; % channel mapping: 1|2 : I|Q;
             fprintf('AWG is configured with %s mode\n',modMethod);
         end
         
@@ -49,9 +51,9 @@ classdef KeysightAWG < Device
             end
         end
         
-        function DevObj = Init(obj)
-            DevObj = iqopen(obj.arbConfig);
-            fclose(DevObj);
+        function g = Init(obj)
+            g = iqopen(obj.arbConfig);
+            fclose(g);
         end
         
         function result = SendDataToAWG(obj,data)
@@ -66,9 +68,93 @@ classdef KeysightAWG < Device
                 'run',obj.flagRunAfterLoad);
         end
         
+        function SendDataToAWGTW(obj,data,channel,amp,offset)
+            if nargin < 4
+                flagSetChannel = 0;
+            else
+                flagSetChannel = 1;
+            end
+            % check the validity of the data and do some scalings
+            data = data_preprocess(data,obj.arbConfig);
+            
+            % open the VISA connection
+            f = obj.Init();
+            fopen(f);
+            
+            % stop waveform output
+            if (run >= 0)
+                if (xfprintf(f, sprintf(':ABORt')) ~= 0)
+                    % if ABORT does not work, let's not try anything else...
+                    % we will probably get many other errors
+                    return;
+                end
+            end
+            
+            % set using either internal memory (256k) or extended memory
+            switch (obj.arbConfig.model)
+                case 'M8195A_2ch'
+                    fsDivider = 2; % orignal value in iQtools
+                    xfprintf(f, sprintf(':INST:DACM DUAL;:TRAC1:MMOD EXT;:TRAC4:MMOD EXT;:INST:MEM:EXT:RDIV DIV%d', fsDivider));
+                case 'M8195A_2ch_256k'
+                    fsDivider = 1;
+                    xfprintf(f, sprintf(':INST:DACM DUAL;:TRAC1:MMOD INT;:TRAC4:MMOD INT;:INST:MEM:EXT:RDIV DIV%d', fsDivider));
+                otherwise
+                    error('unexpected arb model: %s', obj.arbConfig.model);
+            end
+            
+            % set frequency
+            fs = obj.AWGSamplingRate;
+            if (fs ~= 0)
+                xfprintf(f, sprintf(':FREQuency:RASTer %.15g;', fs * fsDivider));
+            end
+            
+            % send the data to the target channel
+            for id = 1:length(channel)
+                ch = channel(id);
+                gen_arb_M8195A(obj.arbConfig, f, ch, real(data), marker1, segmNum, run, fs);
+                if flagSetChannel
+                    % apply the channel setting (amplitude & offset)
+                    xfprintf(f,sprintf(':VOLTage%d:AMPLitude %g',...
+                        chan, amp));
+                    xfprintf(f,sprintf(':VOLTage%d:OFFSet %g',...
+                        chan, offset));
+                    % turn on Output
+                    xfprintf(f, sprintf(':OUTPut%d ON', chan));
+                end
+            end
+            
+            % run
+            if (run == 1 && sum(sum(obj.channelMapping)) ~= 0)
+                xfprintf(f, sprintf(':FUNCtion:MODE ARBitrary'));
+                xfprintf(f, ':INIT:IMMediate');
+            end
+            
+            % close the connection
+            if (~exist('keepOpen', 'var') || keepOpen == 0)
+                fclose(f);
+            end
+        end
+        
+        function ApplyChannelSetting(obj,chan)
+            % apply current channel setting to AWG
+            arb = obj.arbConfig;
+            if (isfield(arb,'amplitude'))
+                if (size(arb.amplitude, 2) < 4)
+                    arb.amplitude = repmat(arb.amplitude, 1, 2);
+                end
+                xfprintf(f, sprintf(':VOLTage%d:AMPLitude %g', chan, arb.amplitude(chan)));
+            end
+            if (isfield(arb,'offset'))
+                if (size(arb.offset, 2) < 4)
+                    arb.offset = repmat(arb.offset, 1, 2);
+                end
+                xfprintf(f, sprintf(':VOLTage%d:OFFSet %g', chan, arb.offset(chan)));
+            end
+        end
+        
         function result = SetSkew(obj,data,delay)
             if obj.flagNotification
-               fprintf('Adding skew triggers reloading the data to AWG\n'); 
+                fprintf('Adding skew triggers reloading the data to AWG\n');
             end
             obj.arbConfig.skew = delay;
             result = obj.SendDataToAWG(data);
@@ -102,6 +188,12 @@ classdef KeysightAWG < Device
             flushinput(f);
             % update the channel setting
             obj.arbConfig.amplitude(chan) = amp;
+        end
+        
+        function retVal = ReadAmp(obj,chan)
+            % chan: Channel ID
+            str = obj.Read(sprintf(':VOLTage%d:AMPLitude?',chan));
+            retVal = str2double(str);
         end
         
         function retVal = xfprintf(~, f, s, ignoreError)
