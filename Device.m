@@ -52,7 +52,7 @@ classdef Device < handle
             g = obj.Init();
             fopen(g);
             fprintf(g,cmd);
-            txt = fscanf(obj.DevObj,'%s');
+            txt = fscanf(g,'%s');
             %             tmp = textscan(txt,'%f','delimiter',',').';
             if isstruct(txt)
                 value = txt{1};
