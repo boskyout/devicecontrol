@@ -97,9 +97,11 @@ classdef Device < handle
         end
         
         function delete(obj)
-            if isvalid(obj.DevObj)
-                fclose(obj.DevObj);
-                delete(obj.DevObj);
+            if ~isempty(obj.DevObj) % add this line to avoid the warning from an empty DevObj
+                if isvalid(obj.DevObj)
+                    fclose(obj.DevObj);
+                    delete(obj.DevObj);
+                end
             end
         end
     end

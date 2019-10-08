@@ -33,22 +33,7 @@ classdef KeysightAWG < Device
             obj.AWGmodel = 'M8195A_2ch_256k';
             obj.arbConfig = getArbConfig(ipaddr,port,model);
             % configure the channel mapping
-%             obj.SetChannelMapping(modMethod); % 'IQ'|'CH1'|'CH4';
             obj.channelMapping = [1 0;0 0;0 0;0 1]; % channel mapping: 1|2 : I|Q;
-            fprintf('AWG is configured with %s mode\n',modMethod);
-        end
-        
-        function obj = SetChannelMapping(obj,modMethod)
-            switch lower(modMethod)
-                case 'iq'
-                    obj.channelMapping = [1 0;0 0;0 0;0 1]; % channel mapping: 1|2 : I|Q;
-                case 'ch1'
-                    obj.channelMapping = [1 0;0 0;0 0;0 0];
-                case 'ch4'
-                    obj.channelMapping = [0 0;0 0;0 0;1 0];
-                otherwise
-                    errordlg('invalid modulation method!','Error');
-            end
         end
         
         function g = Init(obj)
@@ -56,19 +41,8 @@ classdef KeysightAWG < Device
             fclose(g);
         end
         
-        function result = SendDataToAWG(obj,data)
-            % check the validity of data to be sent to AWG
-            if mod(length(data),obj.arbConfig.segmentGranularity)
-                error('Data length does not satisfy the granularity requirement!');
-            end
-            % if no problem, call iqdownload to send
-            result = iqdownload(data, obj.AWGSamplingRate,...
-                'arbConfig',obj.arbConfig,...
-                'channelMapping',obj.channelMapping,...
-                'run',obj.flagRunAfterLoad);
-        end
-        
-        function SendDataToAWGTW(obj,data,channel,amp,offset)
+        function SendDataToAWG(obj,data,channel,amp,offset)
+            run = 1;
             if nargin < 4
                 flagSetChannel = 0;
             else
@@ -109,17 +83,20 @@ classdef KeysightAWG < Device
             end
             
             % send the data to the target channel
+            marker1 = [];
+            segmNum = 1;
             for id = 1:length(channel)
                 ch = channel(id);
                 gen_arb_M8195A(obj.arbConfig, f, ch, real(data), marker1, segmNum, run, fs);
+%                 % turn on Output
+%                 xfprintf(f, sprintf(':OUTPut%d ON', ch));
+                % set the amplitde and offset if required
                 if flagSetChannel
                     % apply the channel setting (amplitude & offset)
                     xfprintf(f,sprintf(':VOLTage%d:AMPLitude %g',...
-                        chan, amp));
+                        ch, amp));
                     xfprintf(f,sprintf(':VOLTage%d:OFFSet %g',...
-                        chan, offset));
-                    % turn on Output
-                    xfprintf(f, sprintf(':OUTPut%d ON', chan));
+                        ch, offset));
                 end
             end
             
@@ -129,6 +106,42 @@ classdef KeysightAWG < Device
                 xfprintf(f, ':INIT:IMMediate');
             end
             
+            % close the connection
+            if (~exist('keepOpen', 'var') || keepOpen == 0)
+                fclose(f);
+            end
+        end
+        
+        function EnableOutput(obj,chan)
+            if nargin <2
+                chan = [1,4];
+            end
+            % open the VISA connection
+            f = obj.Init();
+            fopen(f);
+            % enable output of certain channel
+            for idx = 1:length(chan)
+                ch = chan(idx);
+                xfprintf(f, sprintf(':OUTPut%d ON', ch));
+            end
+            % close the connection
+            if (~exist('keepOpen', 'var') || keepOpen == 0)
+                fclose(f);
+            end
+        end
+        
+        function DisableOutput(obj,chan)
+            if nargin <2
+                chan = [1,4];
+            end
+            % open the VISA connection
+            f = obj.Init();
+            fopen(f);
+            % enable output of certain channel
+            for idx = 1:length(chan)
+                ch = chan(idx);
+                xfprintf(f, sprintf(':OUTPut%d OFF', ch));
+            end
             % close the connection
             if (~exist('keepOpen', 'var') || keepOpen == 0)
                 fclose(f);
@@ -194,6 +207,19 @@ classdef KeysightAWG < Device
             % chan: Channel ID
             str = obj.Read(sprintf(':VOLTage%d:AMPLitude?',chan));
             retVal = str2double(str);
+        end
+        
+        % This function (directly call iqtools) is OBSOLETE!!!
+        function result = SendDataToAWG_OBSOLETE(obj,data)
+            % check the validity of data to be sent to AWG
+            if mod(length(data),obj.arbConfig.segmentGranularity)
+                error('Data length does not satisfy the granularity requirement!');
+            end
+            % if no problem, call iqdownload to send
+            result = iqdownload(data, obj.AWGSamplingRate,...
+                'arbConfig',obj.arbConfig,...
+                'channelMapping',obj.channelMapping,...
+                'run',obj.flagRunAfterLoad);
         end
         
         function retVal = xfprintf(~, f, s, ignoreError)

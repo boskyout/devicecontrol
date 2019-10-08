@@ -62,142 +62,21 @@ for i = 1:nargin-2
     end
 end
 
-
-% convert old format for "downloadToChannel" to channelMapping
-% new format is array with row=channel, column=I/Q
-if (~isempty(downloadToChannel))
-    disp('downloadToChannel is deprecated, please use channelMapping instead');
-    if (iscell(downloadToChannel))
-        downloadToChannel = downloadToChannel{1};
-    end
-    if (ischar(downloadToChannel))
-        switch (downloadToChannel)
-            case 'I+Q to channel 1+2'
-                channelMapping = [1 0; 0 1];
-            case 'I+Q to channel 2+1'
-                channelMapping = [0 1; 1 0];
-            case 'I to channel 1'
-                channelMapping = [1 0; 0 0];
-            case 'I to channel 2'
-                channelMapping = [0 0; 1 0];
-            case 'Q to channel 1'
-                channelMapping = [0 1; 0 0];
-            case 'Q to channel 2'
-                channelMapping = [0 0; 0 1];
-            case 'RF to channel 1'
-                channelMapping = [1 1; 0 0];
-            case 'RF to channel 2'
-                channelMapping = [0 0; 1 1];
-            case 'RF to channel 1+2'
-                channelMapping = [1 1; 1 1];
-            otherwise
-                error(['unexpected value for downloadToChannel argument: ' downloadToChannel]);
-        end
-    end
-end
-
 if (ischar(channelMapping))
     error('unexpected format for parameter channelMapping: string');
 end
 
-% if markers are not specified, generate square wave marker signal
-if (~exist('marker', 'var') || isempty(marker))
-    marker = [15*ones(floor(length(iqdata)/2),1); zeros(length(iqdata)-floor(length(iqdata)/2),1)];
-end
 % try to load the configuration from the file arbConfig.mat
 % arbConfig = loadArbConfig(arbConfig); % changed by TW
 
-% set default channelMapping is none was specified
-if (isempty(channelMapping))
-    switch (arbConfig.numChannels)
-        case 1
-            channelMapping = [1 0];
-        case 2
-            channelMapping = [1 0; 0 1];
-        otherwise
-            channelMapping = [1 0; 1 0; 0 1; 0 1];
-    end
-end
 
-% make sure the data is in the correct format
-if (isvector(iqdata) && size(iqdata,2) > 1)
-    iqdata = iqdata.';
-end
-
-% normalize if required
-if (normalize && ~isempty(iqdata))
-    scale = max(max(abs(real(iqdata(:,1)))), max(abs(imag(iqdata(:,1)))));
-    if (scale > 1)
-        if (normalize)
-            iqdata(:,1) = iqdata(:,1) / scale;
-        else
-            errordlg('Data must be in the range -1...+1', 'Error');
-        end
-    end
-end
-
-%% extract data
-    numColumns = size(iqdata, 2);
-    if (~isvector(iqdata) && numColumns >= 2)
-        data = iqdata(:,1);
-    else
-        data = reshape(iqdata, numel(iqdata), 1);
-    end
-    if (isfield(arbConfig, 'DACRange') && arbConfig.DACRange ~= 1)
-        data = data .* arbConfig.DACRange;
-    end
-    
-%% apply I/Q gainCorrection if necessary
-    if (isfield(arbConfig, 'gainCorrection') && arbConfig.gainCorrection ~= 0)
-        data = complex(real(data) * 10^(arbConfig.gainCorrection/20), imag(data));
-        scale = max(max(real(data)), max(imag(data)));
-        if (scale > 1)
-            data = data ./ scale;
-        end
-    end
 
 %% extract markers - assume there are two markers per channel
-    marker = reshape(marker, numel(marker), 1);
-    marker1 = bitand(uint16(marker),3);
-    marker2 = bitand(bitshift(uint16(marker),-2),3);
-    
-    len = length(data);
-    if (mod(len, arbConfig.segmentGranularity) ~= 0)
-        errordlg(['Segment size is ' num2str(len) ', must be a multiple of ' num2str(arbConfig.segmentGranularity)], 'Error');
-        return;
-    elseif (len < arbConfig.minimumSegmentSize && len ~= 0)
-        errordlg(['Segment size is ' num2str(len) ', must be >= ' num2str(arbConfig.minimumSegmentSize)], 'Error');
-        return;
-    elseif (len > arbConfig.maximumSegmentSize)
-        errordlg(['Segment size is ' num2str(len) ', must be <= ' num2str(arbConfig.maximumSegmentSize)], 'Error');
-        return;
-    end
-    if (isfield(arbConfig, 'interleaving') && arbConfig.interleaving)
-        fs = fs / 2;
-        data = real(data);                              % take the I signal
-        data = complex(data(1:2:end), data(2:2:end));   % and split it into two channels
-        if (~isempty(marker1))
-            marker1 = marker1(1:2:end);
-            marker2 = marker2(1:2:end);
-        end
-        if (size(channelMapping, 1) == 4)
-            if (max(max(channelMapping(1:2,:))) > 0)
-                channelMapping(1:2,:) = [1 0; 0 1];
-            end
-            if (max(max(channelMapping(3:4,:))) > 0)
-                channelMapping(3:4,:) = [1 0; 0 1];
-            end
-        else
-            channelMapping = [1 0; 0 1];
-        end
-    end
+    marker1 = [];
+    marker2 = [];
     
 %% establish a connection and download the data
     switch (arbConfig.model)
-        case { 'M8195A_Rev0' }
-            result = iqdownload_M8195A_Rev0(arbConfig, fs, data, marker1, marker2, segmNum, keepOpen, channelMapping, sequence, run);
-        case { 'M8195A_Rev1' }
-            result = iqdownload_M8195A_Rev1(arbConfig, fs, data, marker1, marker2, segmNum, keepOpen, channelMapping, sequence, run);
         case { 'M8195A_1ch' 'M8195A_2ch' 'M8195A_4ch' 'M8195A_2ch_256k' 'M8195A_4ch_256k' }
             result = iqdownload_M8195A(arbConfig, fs, data, marker1, marker2, segmNum, keepOpen, channelMapping, sequence, run);
         case { 'M8196A' }

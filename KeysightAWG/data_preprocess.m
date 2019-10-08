@@ -1,4 +1,5 @@
 function data = data_preprocess(data,arbConfig)
+normalize = 1;
 %% Convert data into column vector
 if (isvector(data) && size(data,2) > 1)
     data = data.';
@@ -7,15 +8,12 @@ end
 len = length(data);
 if (mod(len, arbConfig.segmentGranularity) ~= 0)
     errordlg(['Segment size is ' num2str(len) ', must be a multiple of ' num2str(arbConfig.segmentGranularity)], 'Error');
-    retBoolValue = 0;
     return;
 elseif (len < arbConfig.minimumSegmentSize && len ~= 0)
     errordlg(['Segment size is ' num2str(len) ', must be >= ' num2str(arbConfig.minimumSegmentSize)], 'Error');
-    retBoolValue = 0;
     return;
 elseif (len > arbConfig.maximumSegmentSize)
     errordlg(['Segment size is ' num2str(len) ', must be <= ' num2str(arbConfig.maximumSegmentSize)], 'Error');
-    retBoolValue = 0;
     return;
 end
 %% normalize if required

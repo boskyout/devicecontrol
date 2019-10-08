@@ -13,7 +13,7 @@ fdata = fftshift(fft(real(data)))/n;
 % create linear phase vector (= delay)
 phd = [-n/2:n/2-1]/n*2*pi*(delay*fs);
 % convert it into frequency domain
-fdelay = exp(j*(-phd));
+fdelay = exp(1j*(-phd));
 % apply delay (convolution ~ multiplication)
 fresult = fdata .* fdelay;
 % ...and convert back into time domain
